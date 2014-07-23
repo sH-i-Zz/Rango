@@ -16,30 +16,52 @@ def encode_url(str):
 def decode_url(str):
     return str.replace('_', ' ')
 
+def get_category_list(max_results=0, starts_with=''):
+    cat_list = []
+    if starts_with:
+        cat_list = Category.objects.filter(name__startswith=starts_with)
+    else:
+        cat_list = Category.objects.all()
+
+    if max_results > 0:
+        if (len(cat_list) > max_results):
+            cat_list = cat_list[:max_results]
+
+    for cat in cat_list:
+        cat.url = encode_url(cat.name)
+    
+    return cat_list    
+
 def index(request):
     context = RequestContext(request)
-    category_list = Category.objects.order_by('-likes')[:5]
+    top_category_list = Category.objects.order_by('-likes')[:5]
+    for category in top_category_list:
+        category.url = encode_url(category.name)
+    context_dict = {'categories': top_category_list}
+    cat_list = get_category_list()
+    context_dict['cat_list'] = cat_list
     page_list = Page.objects.order_by('-views')[:5]
+    context_dict['pages'] = page_list
 
-    context_dict = {'categories': category_list,
-    				'pages': page_list}
+    if request.session.get('last_visit'):
+        last_visit_time = request.session.get('last_visit')
+        visits = request.session.get('visits', 0)
+        if (datetime.now() - datetime.strptime(last_visit_time[:-7], "%Y-%m-%d %H:%M:%S")).days > 0:
+            request.session['visits'] = visits + 1
+    else:
+        request.session['last_visit'] = str(datetime.now())
+        request.session['visits'] = 1
 
-    response = render_to_response('rango/index.html', context_dict, context)
-    visits = int(request.COOKIES.get('visits', '0'))
-    if 'last_visit' in request.COOKIES:
-        last_visit = request.COOKIES['last_visit']
-        last_visit_time = datetime.strptime(last_visit[:-7], "%Y-%m-%d %H:%M:%S")
-# -----> If it's been more than a day since the last visit reassign the value of the cookie to +1 of what it was before and update the last visit cookie, too.
-        if (datetime.now() - last_visit_time).days > 0:
-            response.set_cookie('visits', visits+1)     
-            response.set_cookie('last_visit', datetime.now())
-        else:
-            response.set_cookie('last_visit', datetime.now())               
+    return render_to_response('rango/index.html', context_dict, context)
 
-    for category in category_list:
-    	category.url = encode_url(category.name)
-
-    return response
+def about(request):
+    context = RequestContext(request)
+    context_dict = {}
+    cat_list = get_category_list()
+    context_dict['cat_list'] = cat_list
+    count = request.session.get('visits',0)
+    context_dict['visit_count'] = count
+    return render_to_response('rango/about.html', context_dict , context)
 
 @login_required
 def add_category(request):
